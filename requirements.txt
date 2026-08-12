@@ -1,0 +1,5 @@
+python-dotenv
+pydantic
+python-docx
+PyPDF2
+google-genai
