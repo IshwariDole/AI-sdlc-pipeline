@@ -2,51 +2,61 @@ import json
 import re
 import time
 from google import genai
-from google.genai.errors import ClientError
-from google.genai.errors import ServerError
+from google.genai.errors import ClientError, ServerError
+from groq import Groq
 
-from app.config import GEMINI_API_KEY, GEMINI_MODEL
+from app.config import GEMINI_API_KEY, GEMINI_MODEL, GROQ_API_KEY, GROQ_MODEL
 
-_client = genai.Client(api_key=GEMINI_API_KEY)
+_gemini = genai.Client(api_key=GEMINI_API_KEY)
+_groq = Groq(api_key=GROQ_API_KEY)
 
 
 def _extract_retry_seconds(error_message: str, default: float = 20.0) -> float:
-    """Gemini's 429 errors usually include 'Please retry in 48.37...s' --
-    parse that instead of guessing a fixed wait time."""
     match = re.search(r"retry in ([\d.]+)s", error_message)
     return float(match.group(1)) + 1 if match else default
 
 
-def _call_with_retry(fn, max_attempts: int = 3):
+def _gemini_is_exhausted_or_down(fn, max_attempts: int = 2):
+    """
+    Tries Gemini a couple of times for transient issues (per-minute limits,
+    momentary 503s). Returns None on success is NOT possible here -- instead
+    this either returns the result, or raises _SwitchToFallback to signal
+    "stop trying Gemini, use Groq instead."
+    """
     for attempt in range(1, max_attempts + 1):
         try:
             return fn()
-        except ServerError as e:
+        except ServerError:
             if attempt < max_attempts:
-                wait = 10 * attempt  # simple backoff: 10s, 20s, 30s
-                print(f"[llm_client] Server busy (503). Waiting {wait}s (attempt {attempt}/{max_attempts})...")
-                time.sleep(wait)
+                print(f"[llm_client] Gemini busy (503). Quick retry {attempt}/{max_attempts}...")
+                time.sleep(5)
             else:
-                raise
+                print("[llm_client] Gemini still unavailable. Falling back to Groq.")
+                raise _SwitchToFallback()
         except ClientError as e:
             msg = str(e)
             if "PerDay" in msg or "GenerateRequestsPerDayPerProjectPerModel" in msg:
-                raise RuntimeError(
-                    "Daily free-tier quota exhausted for this model. "
-                    "This resets roughly at midnight Pacific Time. "
-                    "Try again tomorrow, or switch GEMINI_MODEL in config.py "
-                    "to a model with a higher daily quota."
-                ) from e
+                print("[llm_client] Gemini daily quota exhausted. Falling back to Groq.")
+                raise _SwitchToFallback()
             if "RESOURCE_EXHAUSTED" in msg and attempt < max_attempts:
                 wait = _extract_retry_seconds(msg)
-                print(f"[llm_client] Rate limited (per-minute). Waiting {wait:.0f}s (attempt {attempt}/{max_attempts})...")
+                print(f"[llm_client] Gemini rate limited. Waiting {wait:.0f}s...")
                 time.sleep(wait)
             else:
-                raise
+                print("[llm_client] Gemini error. Falling back to Groq.")
+                raise _SwitchToFallback()
+
+
+class _SwitchToFallback(Exception):
+    pass
+
+
 def generate_structured(prompt: str, schema):
-    """For calls that need JSON matching a Pydantic schema."""
-    def do_call():
-        response = _client.models.generate_content(
+    """Tries Gemini first (native schema support). Falls back to Groq
+    (JSON mode + manual Pydantic validation) if Gemini is unavailable."""
+
+    def try_gemini():
+        response = _gemini.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt,
             config={"response_mime_type": "application/json", "response_schema": schema},
@@ -54,13 +64,40 @@ def generate_structured(prompt: str, schema):
         data = json.loads(response.text)
         return schema.model_validate(data)
 
-    return _call_with_retry(do_call)
+    try:
+        return _gemini_is_exhausted_or_down(try_gemini)
+    except _SwitchToFallback:
+        pass
+
+    # --- Groq fallback ---
+    schema_hint = json.dumps(schema.model_json_schema(), indent=2)
+    groq_prompt = (
+        f"{prompt}\n\n"
+        f"Respond with ONLY valid JSON matching this schema, no other text:\n{schema_hint}"
+    )
+    response = _groq.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[{"role": "user", "content": groq_prompt}],
+        response_format={"type": "json_object"},
+    )
+    data = json.loads(response.choices[0].message.content)
+    return schema.model_validate(data)
 
 
 def generate_text(prompt: str) -> str:
-    """For plain-text calls (e.g. research agent's per-topic answers)."""
-    def do_call():
-        response = _client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+    """Same fallback pattern for plain-text calls."""
+
+    def try_gemini():
+        response = _gemini.models.generate_content(model=GEMINI_MODEL, contents=prompt)
         return response.text.strip()
 
-    return _call_with_retry(do_call)
+    try:
+        return _gemini_is_exhausted_or_down(try_gemini)
+    except _SwitchToFallback:
+        pass
+
+    response = _groq.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return response.choices[0].message.content.strip()
