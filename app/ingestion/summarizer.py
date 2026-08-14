@@ -1,16 +1,5 @@
-import os
-import json
-from google import genai
-from dotenv import load_dotenv
-
 from app.models.schemas import BRSSummary
-
-load_dotenv()
-
-GEMINI_MODEL = "gemini-3.5-flash"
-
-_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-
+from app.utils.llm_client import generate_structured
 
 SYSTEM_INSTRUCTION = """You are a business analyst assistant. You will be given
 the raw text of a Business Requirements Specification (BRS) document.
@@ -25,20 +14,5 @@ Rules:
 
 
 def summarize_brs(raw_text: str) -> BRSSummary:
-    """
-    Sends raw BRS text to Gemini and returns a validated, structured summary.
-    """
-    response = _client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=f"{SYSTEM_INSTRUCTION}\n\nBRS DOCUMENT TEXT:\n\n{raw_text}",
-        config={
-            "response_mime_type": "application/json",
-            "response_schema": BRSSummary,
-        },
-    )
-
-    # response.parsed gives us the SDK's own attempt at building the Pydantic
-    # object. We still explicitly re-validate below rather than trusting it
-    # blindly -- cheap insurance, and makes failures explicit instead of silent.
-    data = json.loads(response.text)
-    return BRSSummary.model_validate(data)
+    prompt = f"{SYSTEM_INSTRUCTION}\n\nBRS DOCUMENT TEXT:\n\n{raw_text}"
+    return generate_structured(prompt, BRSSummary)

@@ -65,3 +65,16 @@ class SRSDocument(BaseModel):
     non_functional_requirements: List[NonFunctionalRequirement]
     use_cases: List[UseCase]
     constraints: List[str]
+
+
+class RequirementClassification(BaseModel):
+    id: str = Field(description="The FR/NFR ID being classified, e.g. 'FR-03'")
+    text: str = Field(description="The original requirement text, copied as-is")
+    type: str = Field(description="Exactly 'Technical' or 'Non-Technical'")
+    subcategory: str = Field(description="If Technical: Frontend, Backend, Database, Integration, Security, Infrastructure, or QA. If Non-Technical: Business Process, Documentation, Training, Compliance/Legal, or Other.")
+    reasoning: str = Field(description="One-sentence justification for the classification")
+
+
+class ClassifiedSRS(BaseModel):
+    project_name: str
+    classifications: List[RequirementClassification]
