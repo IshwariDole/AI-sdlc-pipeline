@@ -3,4 +3,5 @@ pydantic
 python-docx
 PyPDF2
 google-genai
-pip install groq
+groq
+streamlit
