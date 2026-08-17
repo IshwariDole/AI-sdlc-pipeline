@@ -78,3 +78,40 @@ class RequirementClassification(BaseModel):
 class ClassifiedSRS(BaseModel):
     project_name: str
     classifications: List[RequirementClassification]
+
+class Component(BaseModel):
+    name: str = Field(description="Component name, e.g. 'Auth Service', 'Product Catalog API'")
+    responsibility: str = Field(description="What this component owns/does")
+    related_requirements: List[str] = Field(description="FR/NFR IDs this component fulfills")
+
+
+class ApiContract(BaseModel):
+    endpoint: str = Field(description="e.g. 'POST /api/orders'")
+    purpose: str = Field(description="One-line description")
+    request_shape: str = Field(description="Key fields expected in the request, brief")
+    response_shape: str = Field(description="Key fields returned, brief")
+
+
+class DbTable(BaseModel):
+    name: str = Field(description="Table/collection name")
+    key_fields: List[str] = Field(description="Important fields, e.g. 'id (PK)', 'email (unique)'")
+    notes: str = Field(description="Relationships or important constraints")
+
+
+class HLD(BaseModel):
+    architecture_overview: str = Field(description="2-3 sentence description of the overall architecture style, e.g. layered monolith, microservices")
+    components: List[Component]
+    tech_stack_suggestion: List[str] = Field(description="Suggested technologies with brief justification each")
+    mermaid_diagram: str = Field(description="A valid Mermaid flowchart (graph TD) showing components and data flow")
+
+
+class LLD(BaseModel):
+    api_contracts: List[ApiContract]
+    db_schema: List[DbTable]
+    module_notes: str = Field(description="Any important implementation-level notes or edge cases to watch for")
+
+
+class DesignDocument(BaseModel):
+    project_name: str
+    hld: HLD
+    lld: LLD
