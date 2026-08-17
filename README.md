@@ -13,7 +13,7 @@ BRS (doc/PDF) → Ingestion & Summarization → Research Agent → SRS Generator
 
 ## Status
 
-🚧 In progress. Currently implemented: BRS ingestion & structured summarization.
+🚧 In progress. Currently implemented: BRS ingestion,structured summarization,research Agent and Tech/Non-Tech Classifier .
 
 ## Stack
 
