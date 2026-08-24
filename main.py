@@ -1,7 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
-
 from app.design.generator import generate_design
 from app.models.schemas import DesignDocument
 from app.ingestion.parser import parse_document
