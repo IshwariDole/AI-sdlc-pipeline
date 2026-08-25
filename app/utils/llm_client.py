@@ -4,7 +4,6 @@ import time
 from google import genai
 from google.genai.errors import ClientError, ServerError
 from groq import Groq
-
 from app.config import GEMINI_API_KEY, GEMINI_MODEL, GROQ_API_KEY, GROQ_MODEL
 
 _gemini = genai.Client(api_key=GEMINI_API_KEY)
