@@ -12,7 +12,7 @@ from app.utils.storage import save_json, load_json
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.models.schemas import BRSSummary, EnrichedBRS, SRSDocument, ClassifiedSRS
-
+import streamlit as st
 app = FastAPI(title="AI-SDLC Pipeline API")
 
 # React runs on a different port (localhost:3000/5173) than FastAPI
