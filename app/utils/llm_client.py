@@ -3,7 +3,8 @@ import re
 import time
 from google import genai
 from google.genai.errors import ClientError, ServerError
-from groq import Groq
+from groq import Groq, RateLimitError
+from pydantic import schema
 from app.config import GEMINI_API_KEY, GEMINI_MODEL, GROQ_API_KEY, GROQ_MODEL
 
 _gemini = genai.Client(api_key=GEMINI_API_KEY)
@@ -76,10 +77,40 @@ def generate_structured(prompt: str, schema):
     )
     response = _groq.chat.completions.create(
         model=GROQ_MODEL,
-        messages=[{"role": "user", "content": groq_prompt}],
-        response_format={"type": "json_object"},
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a structured data generator. "
+                    "Return ONLY valid JSON. "
+                    "Do not use markdown. "
+                    "Do not use ```json fences. "
+                    "Do not add explanations before or after the JSON."
+                ),
+            },
+            {
+                "role": "user",
+                "content": groq_prompt,
+            },
+        ],
     )
-    data = json.loads(response.choices[0].message.content)
+
+    content = response.choices[0].message.content.strip()
+
+    # Remove markdown fences if the model still adds them
+    if content.startswith("```json"):
+        content = content[7:]
+
+    if content.startswith("```"):
+        content = content[3:]
+
+    if content.endswith("```"):
+        content = content[:-3]
+
+    content = content.strip()
+
+    data = json.loads(content)
+
     return schema.model_validate(data)
 
 
