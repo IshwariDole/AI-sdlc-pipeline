@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI-SDLC Pipeline</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  <script src="https://unpkg.com/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; }
+    h1 { margin-bottom: 4px; }
+    .phase { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin: 16px 0; }
+    .phase h2 { margin-top: 0; font-size: 18px; }
+    button { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    pre { background: #f5f5f5; padding: 12px; border-radius: 6px; overflow-x: auto; max-height: 300px; }
+    .error { color: #dc2626; margin-top: 8px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+    th, td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+    const API = "http://127.0.0.1:8000";
+
+    function JsonBlock({ data }) {
+      return <pre>{JSON.stringify(data, null, 2)}</pre>;
+    }
+
+    // ---- NEW: Mermaid diagram renderer ----
+    function MermaidDiagram({ chart }) {
+      const ref = React.useRef(null);
+
+      React.useEffect(() => {
+        if (chart && ref.current) {
+          mermaid.initialize({ startOnLoad: false });
+          const id = "mermaid-" + Date.now();
+          mermaid.render(id, chart).then(({ svg }) => {
+            ref.current.innerHTML = svg;
+          }).catch(err => {
+            ref.current.innerHTML = `<p class="error">Diagram render failed: ${err.message}</p>`;
+          });
+        }
+      }, [chart]);
+
+      return <div ref={ref} />;
+    }
+
+    // ---- NEW: Phase 5's custom result view ----
+    function DesignResult({ data }) {
+      if (!data) return null;
+      return (
+        <div>
+          <p><strong>Architecture:</strong> {data.hld.architecture_overview}</p>
+          <MermaidDiagram chart={data.hld.mermaid_diagram} />
+          <h4>Components</h4>
+          <table>
+            <thead><tr><th>Name</th><th>Responsibility</th></tr></thead>
+            <tbody>
+              {data.hld.components.map((c, i) => (
+                <tr key={i}><td>{c.name}</td><td>{c.responsibility}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <h4>Suggested Tech Stack</h4>
+          <ul>{data.hld.tech_stack_suggestion.map((t, i) => <li key={i}>{t}</li>)}</ul>
+          <h4>API Contracts</h4>
+          <table>
+            <thead><tr><th>Endpoint</th><th>Purpose</th></tr></thead>
+            <tbody>
+              {data.lld.api_contracts.map((a, i) => (
+                <tr key={i}><td>{a.endpoint}</td><td>{a.purpose}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    // ---- PhaseCard: UPDATED to support a custom renderer ----
+    function PhaseCard({ title, endpoint, enabled, onDone, result, needsFile, renderResult }) {
+      const [loading, setLoading] = React.useState(false);
+      const [error, setError] = React.useState(null);
+      const fileInputRef = React.useRef(null);
+
+      async function run() {
+        setLoading(true);
+        setError(null);
+        try {
+          let response;
+          if (needsFile) {
+            const file = fileInputRef.current.files[0];
+            if (!file) { setError("Choose a file first."); setLoading(false); return; }
+            const formData = new FormData();
+            formData.append("file", file);
+            response = await axios.post(API + endpoint, formData);
+          } else {
+            response = await axios.post(API + endpoint);
+          }
+          onDone(response.data);
+        } catch (e) {
+          setError(e.response?.data?.detail || e.message);
+        } finally {
+          setLoading(false);
+        }
+      }
+
+      return (
+        <div className="phase">
+          <h2>{title}</h2>
+          {needsFile && <input type="file" ref={fileInputRef} accept=".docx,.pdf" />}
+          <div style={{ marginTop: 8 }}>
+            <button onClick={run} disabled={!enabled || loading}>
+              {loading ? "Running..." : "Run"}
+            </button>
+          </div>
+          {error && <p className="error">{error}</p>}
+          {result && (renderResult ? renderResult(result) : <JsonBlock data={result} />)}
+        </div>
+      );
+    }
+
+    // ---- App: UPDATED with design state + Phase 5 card ----
+    function App() {
+      const [summary, setSummary] = React.useState(null);
+      const [enriched, setEnriched] = React.useState(null);
+      const [srs, setSrs] = React.useState(null);
+      const [classified, setClassified] = React.useState(null);
+      const [design, setDesign] = React.useState(null); // NEW
+
+      React.useEffect(() => {
+        const keys = [
+          ["summary", setSummary],
+          ["enriched", setEnriched],
+          ["srs", setSrs],
+          ["classified", setClassified],
+          ["design", setDesign], // NEW
+        ];
+        keys.forEach(([key, setter]) => {
+          axios.get(`${API}/api/results/${key}`).then(res => {
+            if (res.data) setter(res.data);
+          }).catch(() => {});
+        });
+      }, []);
+
+      return (
+        <div>
+          <h1>AI-SDLC Pipeline</h1>
+          <p>BRS → Summary → Research → SRS → Classification → Design</p>
+
+          <PhaseCard
+            title="Phase 1 — Ingestion & Summarization"
+            endpoint="/api/phase1/summarize"
+            needsFile={true}
+            enabled={true}
+            onDone={setSummary}
+            result={summary}
+          />
+          <PhaseCard
+            title="Phase 2 — Research Agent"
+            endpoint="/api/phase2/research"
+            enabled={!!summary}
+            onDone={setEnriched}
+            result={enriched}
+          />
+          <PhaseCard
+            title="Phase 3 — SRS Generation"
+            endpoint="/api/phase3/srs"
+            enabled={!!enriched}
+            onDone={setSrs}
+            result={srs}
+          />
+          <PhaseCard
+            title="Phase 4 — Classification"
+            endpoint="/api/phase4/classify"
+            enabled={!!srs}
+            onDone={setClassified}
+            result={classified}
+          />
+          {/* NEW: Phase 5 card */}
+          <PhaseCard
+            title="Phase 5 — HLD/LLD Design"
+            endpoint="/api/phase5/design"
+            enabled={!!classified}
+            onDone={setDesign}
+            result={design}
+            renderResult={(d) => <DesignResult data={d} />}
+          />
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
