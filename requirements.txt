@@ -1,0 +1,28 @@
+# --- core pipeline -----------------------------------------------------
+# The core (src/brs2sprint) deliberately has NO required third-party deps.
+# With LLM_PROVIDER=mock it runs on a bare Python 3.10+ install.
+
+# --- LLM providers (pick one) -------------------------------------------
+# anthropic>=0.40.0   # paid
+openai>=1.40.0        # needed for openai AND groq AND gemini (all speak
+                       # the OpenAI wire format) — install this for the
+                       # free-tier providers, no anthropic package needed
+
+# --- document parsing (install what your inputs need) ------------------
+pypdf>=4.2.0              # .pdf input
+python-docx>=1.1.0        # .docx input and .docx SRS export
+
+# --- backend + dashboard ----------------------------------------------
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9   # file uploads
+streamlit>=1.35.0
+
+# --- optional extras ---------------------------------------------------
+# tavily-python>=0.3.0     # phase 2 web research
+# jira>=3.8.0              # phase 7 Jira export
+# transformers>=4.40.0     # phase 4 v2 fine-tuned classifier
+# torch>=2.2.0
+# datasets>=2.19.0
+# scikit-learn>=1.4.0
+# pytest>=8.0.0
